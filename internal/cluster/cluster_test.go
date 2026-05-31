@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -15,12 +14,11 @@ import (
 func TestNodeBootstrap(t *testing.T) {
 	dir := t.TempDir()
 
-	cfg := Config{
-		NodeID:    "node1",
-		RaftAddr:  "127.0.0.1:17000",
-		RaftDir:   dir,
-		Bootstrap: true,
-	}
+	cfg := DefaultConfig()
+	cfg.NodeID = "node1"
+	cfg.RaftAddr = "127.0.0.1:17000"
+	cfg.RaftDir = dir
+	cfg.Bootstrap = true
 
 	// Setup queue manager
 	walInst, err := wal.New(wal.Config{
@@ -94,7 +92,7 @@ func TestConsistentHashingRebalance(t *testing.T) {
 	ch.AddNode("node2")
 
 	// Get mapping before adding node
-	before, err := ch.GetNode("queue1")
+	_, err := ch.GetNode("queue1")
 	require.NoError(t, err)
 
 	// Add new node
@@ -128,12 +126,11 @@ func TestSharding(t *testing.T) {
 func TestMembership(t *testing.T) {
 	// Create mock node
 	dir := t.TempDir()
-	cfg := Config{
-		NodeID:    "node1",
-		RaftAddr:  "127.0.0.1:17001",
-		RaftDir:   dir,
-		Bootstrap: true,
-	}
+	cfg := DefaultConfig()
+	cfg.NodeID = "node1"
+	cfg.RaftAddr = "127.0.0.1:17001"
+	cfg.RaftDir = dir
+	cfg.Bootstrap = true
 
 	walInst, _ := wal.New(wal.Config{Dir: dir + "/wal", SegmentSize: 1024, Fsync: false})
 	defer walInst.Close()
