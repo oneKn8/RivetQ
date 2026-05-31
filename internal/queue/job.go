@@ -10,10 +10,12 @@ type Job struct {
 	Queue         string
 	Payload       []byte
 	Headers       map[string]string
-	Priority      uint8  // 0-9, higher is more important
+	Priority      uint8 // 0-9, higher is more important
 	Tries         uint32
 	MaxRetries    uint32
-	ETA           time.Time // Execute Time After
+	BaseDelay     time.Duration // retry backoff base delay (0 = use default)
+	MaxDelay      time.Duration // retry backoff max delay (0 = use default)
+	ETA           time.Time     // Execute Time After
 	LeaseID       string
 	LeaseDeadline time.Time
 	Status        JobStatus
@@ -60,7 +62,9 @@ func (j *Job) IsDLQ() bool {
 	return j.Status == JobStatusDLQ
 }
 
-// ShouldRetry returns true if job should be retried
+// ShouldRetry returns true if job should be retried.
+// MaxRetries is the number of retries allowed after the first attempt, so a
+// job is dead-lettered once its failure count exceeds MaxRetries.
 func (j *Job) ShouldRetry() bool {
-	return j.Tries < j.MaxRetries
+	return j.Tries <= j.MaxRetries
 }

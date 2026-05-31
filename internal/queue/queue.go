@@ -17,10 +17,10 @@ import (
 type Queue struct {
 	mu sync.RWMutex
 
-	name   string
-	ready  *priorityQueue
+	name     string
+	ready    *priorityQueue
 	inflight map[string]*Job // jobID -> job
-	dlq    map[string]*Job // jobID -> job
+	dlq      map[string]*Job // jobID -> job
 
 	store   *store.Store
 	wal     *wal.WAL
@@ -204,6 +204,8 @@ func (m *Manager) Enqueue(queueName string, payload []byte, headers map[string]s
 		Priority:   priority,
 		Tries:      0,
 		MaxRetries: retryPolicy.MaxRetries,
+		BaseDelay:  retryPolicy.BaseDelay,
+		MaxDelay:   retryPolicy.MaxDelay,
 		ETA:        eta,
 		Status:     JobStatusReady,
 		EnqueuedAt: time.Now(),
@@ -333,6 +335,20 @@ func (m *Manager) Ack(jobID, leaseID string) error {
 	return nil
 }
 
+// retryBackoff computes the requeue delay for a job, honoring its configured
+// retry policy and falling back to the default config for any unset field
+// (e.g. jobs restored from the WAL, which does not persist per-job delays).
+func retryBackoff(job *Job) time.Duration {
+	cfg := backoff.DefaultConfig()
+	if job.BaseDelay > 0 {
+		cfg.BaseDelay = job.BaseDelay
+	}
+	if job.MaxDelay > 0 {
+		cfg.MaxDelay = job.MaxDelay
+	}
+	return backoff.Calculate(cfg, job.Tries)
+}
+
 // Nack negatively acknowledges a job (requeue with backoff or move to DLQ)
 func (m *Manager) Nack(jobID, leaseID, reason string) error {
 	// Find the job
@@ -365,7 +381,7 @@ func (m *Manager) Nack(jobID, leaseID, reason string) error {
 	job.Tries++
 
 	// Calculate backoff
-	backoffDelay := backoff.CalculateDefault(job.Tries)
+	backoffDelay := retryBackoff(job)
 	job.ETA = time.Now().Add(backoffDelay)
 	job.LeaseID = ""
 	job.LeaseDeadline = time.Time{}
@@ -469,7 +485,7 @@ func (m *Manager) checkLeaseTimeouts() {
 			log.Warn().Str("job_id", job.ID).Msg("lease expired, returning to ready queue")
 
 			job.Tries++
-			backoffDelay := backoff.CalculateDefault(job.Tries)
+			backoffDelay := retryBackoff(job)
 			job.ETA = now.Add(backoffDelay)
 			job.LeaseID = ""
 			job.LeaseDeadline = time.Time{}
